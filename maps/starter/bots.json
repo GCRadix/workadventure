@@ -416,11 +416,11 @@
         {
          "columns":10,
          "firstgid":1,
-         "image":"..\/assets\/tileset5_export.png",
+         "image":"..\/assets\/objects\/objects_03.png",
          "imageheight":320,
          "imagewidth":320,
          "margin":0,
-         "name":"tileset5_export",
+         "name":"objects_03",
          "properties":[
                 {
                  "name":"tilesetCopyright",
@@ -435,11 +435,11 @@
         {
          "columns":10,
          "firstgid":101,
-         "image":"..\/assets\/tileset6_export.png",
+         "image":"..\/assets\/objects\/objects_04.png",
          "imageheight":320,
          "imagewidth":320,
          "margin":0,
-         "name":"tileset6_export",
+         "name":"objects_04",
          "properties":[
                 {
                  "name":"tilesetCopyright",
@@ -454,11 +454,11 @@
         {
          "columns":11,
          "firstgid":201,
-         "image":"..\/assets\/tileset1.png",
+         "image":"..\/assets\/objects\/objects_01.png",
          "imageheight":352,
          "imagewidth":352,
          "margin":0,
-         "name":"tileset1",
+         "name":"objects_01",
          "properties":[
                 {
                  "name":"tilesetCopyright",
@@ -473,11 +473,11 @@
         {
          "columns":11,
          "firstgid":322,
-         "image":"..\/assets\/tileset1-repositioning.png",
+         "image":"..\/assets\/objects\/objects_02.png",
          "imageheight":352,
          "imagewidth":352,
          "margin":0,
-         "name":"tileset1-repositioning",
+         "name":"objects_02",
          "properties":[
                 {
                  "name":"tilesetCopyright",

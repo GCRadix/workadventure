@@ -345,7 +345,7 @@
         {
          "columns":10,
          "firstgid":1,
-         "image":"..\/..\/..\/assets\/tileset5_export.png",
+         "image":"..\/..\/..\/assets\/objects\/objects_03.png",
          "imageheight":320,
          "imagewidth":320,
          "margin":0,
@@ -364,7 +364,7 @@
         {
          "columns":10,
          "firstgid":101,
-         "image":"..\/..\/..\/assets\/tileset6_export.png",
+         "image":"..\/..\/..\/assets\/objects\/objects_04.png",
          "imageheight":320,
          "imagewidth":320,
          "margin":0,
@@ -383,7 +383,7 @@
         {
          "columns":11,
          "firstgid":201,
-         "image":"..\/..\/..\/assets\/tileset1.png",
+         "image":"..\/..\/..\/assets\/objects\/objects_01.png",
          "imageheight":352,
          "imagewidth":352,
          "margin":0,
@@ -402,7 +402,7 @@
         {
          "columns":11,
          "firstgid":322,
-         "image":"..\/..\/..\/assets\/tileset1-repositioning.png",
+         "image":"..\/..\/..\/assets\/objects\/objects_02.png",
          "imageheight":352,
          "imagewidth":352,
          "margin":0,

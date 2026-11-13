@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixel Art Normalizer</title>
+<style>
+  :root {
+    --bg: #16151d; --panel: #201f2a; --panel2: #2a2936; --line: #383747;
+    --text: #e9e7f2; --muted: #9a98ad; --accent: #639bff; --ok: #6abe30; --warn: #f0b829; --bad: #d95763;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 18px 24px 8px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  header p { margin: 0; color: var(--muted); max-width: 900px; }
+  main { display: grid; grid-template-columns: 300px 1fr; gap: 18px; padding: 14px 24px 40px; align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; position: sticky; top: 12px; }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 8px; }
+  aside h2:first-child { margin-top: 0; }
+  label.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+  label.row span.v { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+  input[type=range] { width: 130px; accent-color: var(--accent); }
+  select, button, input[type=number] { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font: inherit; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0d1020; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  .swatches { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; margin: 6px 0; }
+  .swatches div { aspect-ratio: 1; border-radius: 2px; }
+  .hint { color: var(--muted); font-size: 12px; margin: 4px 0; }
+  #drop { border: 2px dashed var(--line); border-radius: 10px; padding: 28px; text-align: center; color: var(--muted); background: var(--panel); transition: border-color .15s, background .15s; cursor: pointer; }
+  #drop.over { border-color: var(--accent); background: #232a3d; color: var(--text); }
+  #drop strong { color: var(--text); }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 14px; }
+  .card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .card-head .name { font-weight: 600; word-break: break-all; }
+  .card-head .actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); }
+  .chip.ok { border-color: #3d6b22; color: #a7e07f; }
+  .chip.warn { border-color: #7a5f15; color: #f6d277; }
+  .chip.bad { border-color: #7a2e36; color: #f19aa3; }
+  main > section, .views > div { min-width: 0; }
+  .views { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px; }
+  .view { background: repeating-conic-gradient(#2b2a36 0% 25%, #23222d 0% 50%) 0 0 / 16px 16px; border-radius: 6px; overflow: auto; max-height: 520px; border: 1px solid var(--line); }
+  .view-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 4px; }
+  canvas.px { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+  .inline { display: inline-flex; align-items: center; gap: 6px; }
+  footer { color: var(--muted); font-size: 12px; padding: 0 24px 24px; }
+  code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pixel Art Normalizer</h1>
+  <p>Drop in ripped or found pixel art. It undoes upscaling, removes half-transparency and snaps every pixel to the project palette (<code>maps/references/sprite_palette.gpl</code>). Everything runs in your browser: nothing is uploaded, and nothing needs to be installed.</p>
+</header>
+
+<main>
+  <aside>
+    <h2>Palette</h2>
+    <div id="palName" class="hint"></div>
+    <div id="swatches" class="swatches"></div>
+    <div class="inline">
+      <button id="loadPalBtn">Load palette…</button>
+      <button id="resetPalBtn" title="Back to the built-in project palette">Reset</button>
+    </div>
+    <input type="file" id="palFile" accept=".gpl,.json,.hex,.txt,.png" hidden>
+    <p class="hint">Accepts .gpl, .json, .hex or a .png of swatches.</p>
+
+    <h2>Pixel size</h2>
+    <label class="row">Scale
+      <select id="scaleMode">
+        <option value="auto">Auto-detect</option>
+        <option value="1">1× (already native)</option>
+        <option value="2">2×</option><option value="3">3×</option><option value="4">4×</option>
+        <option value="5">5×</option><option value="6">6×</option><option value="8">8×</option>
+      </select>
+    </label>
+    <label class="row"><span><input type="checkbox" id="padGrid" checked> Pad to 32 px grid</span></label>
+
+    <h2>Transparency</h2>
+    <label class="row">Alpha cutoff <input type="range" id="alphaCut" min="1" max="254" value="128"><span class="v" id="alphaCutV"></span></label>
+    <p class="hint">Pixels more opaque than this become solid. The rest become fully transparent.</p>
+
+    <h2>Pre-adjust (before snapping)</h2>
+    <label class="row">Brightness <input type="range" id="bright" min="-30" max="30" value="0"><span class="v" id="brightV"></span></label>
+    <label class="row">Contrast <input type="range" id="contrast" min="-50" max="50" value="0"><span class="v" id="contrastV"></span></label>
+    <label class="row">Saturation <input type="range" id="sat" min="-100" max="100" value="0"><span class="v" id="satV"></span></label>
+    <p class="hint">Use these when an asset snaps to the wrong colours (too dark, too grey…). The comparison is perceptual (OKLab).</p>
+
+    <h2>Preview</h2>
+    <label class="row">Zoom
+      <select id="zoom"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>6</option><option>8</option></select>
+    </label>
+    <label class="row"><span><input type="checkbox" id="showDiff"> Highlight changed pixels</span></label>
+  </aside>
+
+  <section>
+    <div id="drop">
+      <strong>Drop images here</strong> or click to choose<br>
+      <span class="hint">PNG, GIF, WebP, BMP · several at once is fine</span>
+      <input type="file" id="files" accept="image/*" multiple hidden>
+    </div>
+    <div class="toolbar">
+      <button class="primary" id="dlAll" disabled>Download all (.zip)</button>
+      <button id="clearAll" disabled>Clear</button>
+      <span class="hint" id="summary"></span>
+    </div>
+    <div id="results"></div>
+  </section>
+</main>
+
+<footer>
+  Limits: auto-detect only works for clean (nearest-neighbour) upscales. Art that was smoothly resized has blurred edges and needs redrawing by hand. Palette snapping is a starting point: check shading ramps afterwards in Aseprite or similar.
+</footer>
+
+<script>
+"use strict";
+// ---------- Built-in palette (from maps/references/sprite_palette.gpl) ----------
+const DEFAULT_PALETTE = ["#000000","#222034","#323c39","#847e87","#696a6a","#9badb7","#595652","#cbdbfc","#454345","#45283c","#663931","#c4824e","#a64b31","#d9a066","#8f563b","#639bff","#5b6ee1","#306082","#3f3f74","#df7126","#eec39a","#ffffff","#fd9258","#fad2dc","#f0b829","#262e36","#653932","#d95763","#f7ff92","#6abe30","#7acf9b","#98cfff","#d5a7fa","#5fcde4","#ac3232","#fbe877","#5f9234","#37946e","#b46ed5","#dd7132","#86242d","#4b692f","#76428a","#502858","#44293c","#99e550","#7dddff","#ff82a1","#006c57","#184945"];
+const TILE = 32;
+const $ = id => document.getElementById(id);
+
+let palette = { name: "Project palette (built-in, 50 colours)", hex: DEFAULT_PALETTE };
+let palRGB = [], palLab = [];
+const items = []; // {name, src: ImageData, out: ImageData, info, el}
+
+// ---------- Colour maths ----------
+function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function rgbToHex(r, g, b) { return "#" + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1); }
+const s2l = new Float32Array(256);
+for (let i = 0; i < 256; i++) { const c = i / 255; s2l[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+function l2s(x) { x = x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055; return Math.max(0, Math.min(255, Math.round(x * 255))); }
+function rgbToOklab(r, g, b) {
+  r = s2l[r]; g = s2l[g]; b = s2l[b];
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+          1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+          0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+}
+function oklabToRgb(L, a, b) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+  return [l2s(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+          l2s(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+          l2s(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s)];
+}
+function setPalette(p) {
+  palette = p;
+  palRGB = p.hex.map(hexToRgb);
+  palLab = palRGB.map(c => rgbToOklab(...c));
+  $("palName").textContent = p.name;
+  $("swatches").innerHTML = p.hex.map(h => `<div style="background:${h}" title="${h}"></div>`).join("");
+}
+
+// ---------- Palette file parsing ----------
+async function parsePaletteFile(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (ext === "png") {
+    const img = await loadImageData(file);
+    const set = new Set();
+    for (let i = 0; i < img.data.length; i += 4) if (img.data[i + 3] > 127) set.add(rgbToHex(img.data[i], img.data[i + 1], img.data[i + 2]));
+    return [...set];
+  }
+  const text = await file.text();
+  if (ext === "json") {
+    const j = JSON.parse(text);
+    const arr = Array.isArray(j) ? j : (j.colors || j.palette || []);
+    return arr.map(c => typeof c === "string" ? c : (c.hex || rgbToHex(c.r, c.g, c.b)));
+  }
+  if (ext === "gpl") {
+    const out = [];
+    for (const line of text.split(/\r?\n/)) {
+      const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)/);
+      if (m) out.push(rgbToHex(+m[1], +m[2], +m[3]));
+    }
+    return out;
+  }
+  return (text.match(/#?[0-9a-fA-F]{6}\b/g) || []).map(h => "#" + h.replace("#", "").toLowerCase());
+}
+
+// ---------- Image IO ----------
+function loadImageData(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const ctx = c.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      res(ctx.getImageData(0, 0, c.width, c.height));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("Could not read image")); };
+    img.src = url;
+  });
+}
+
+// ---------- Scale detection ----------
+// In a clean k× upscale, colour changes only happen on every k-th column/row.
+// Count changes per column and per row, then find the largest k where nearly all of them line up.
+function detectScale(img) {
+  const { width: w, height: h, data } = img;
+  const colChg = new Float64Array(w), rowChg = new Float64Array(h);
+  const stepY = Math.max(1, Math.floor(h / 600)), stepX = Math.max(1, Math.floor(w / 600));
+  const px = (x, y) => { const i = (y * w + x) * 4; return data[i + 3] < 128 ? -1 : (data[i] << 16) | (data[i + 1] << 8) | data[i + 2]; };
+  for (let y = 0; y < h; y += stepY) for (let x = 1; x < w; x++) if (px(x, y) !== px(x - 1, y)) colChg[x]++;
+  for (let x = 0; x < w; x += stepX) for (let y = 1; y < h; y++) if (px(x, y) !== px(x, y - 1)) rowChg[y]++;
+  const fit = (arr, k) => {
+    let total = 0; const byRes = new Float64Array(k);
+    for (let i = 1; i < arr.length; i++) { total += arr[i]; byRes[i % k] += arr[i]; }
+    if (total < 20) return { ok: false };
+    let best = 0, off = 0; for (let r = 0; r < k; r++) if (byRes[r] > best) { best = byRes[r]; off = r; }
+    return { ok: best / total >= 0.93, off, frac: best / total };
+  };
+  for (const k of [8, 7, 6, 5, 4, 3, 2]) {
+    if (w < k * 2 || h < k * 2) continue;
+    const fx = fit(colChg, k), fy = fit(rowChg, k);
+    if (fx.ok && fy.ok) return { k, ox: fx.off, oy: fy.off };
+  }
+  return { k: 1, ox: 0, oy: 0 };
+}
+
+function downscale(img, k, ox, oy) {
+  if (k === 1) return img;
+  const { width: w, height: h, data } = img;
+  // Blocks are aligned to (ox, oy); a partial block on the leading edge is kept.
+  const sx = ox % k, sy = oy % k;
+  const startX = sx ? sx - k : 0, startY = sy ? sy - k : 0;
+  const nw = Math.ceil((w - startX) / k), nh = Math.ceil((h - startY) / k);
+  const out = new ImageData(nw, nh);
+  for (let by = 0; by < nh; by++) for (let bx = 0; bx < nw; bx++) {
+    // Most common colour in the block (robust to stray pixels)
+    const counts = new Map(); let bestKey = 0, bestN = 0, bestI = -1;
+    for (let y = startY + by * k; y < startY + (by + 1) * k; y++) {
+      if (y < 0 || y >= h) continue;
+      for (let x = startX + bx * k; x < startX + (bx + 1) * k; x++) {
+        if (x < 0 || x >= w) continue;
+        const i = (y * w + x) * 4;
+        const key = data[i + 3] < 128 ? -1 : (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+        const n = (counts.get(key) || 0) + 1; counts.set(key, n);
+        if (n > bestN) { bestN = n; bestKey = key; bestI = i; }
+      }
+    }
+    const o = (by * nw + bx) * 4;
+    if (bestI >= 0) { out.data[o] = data[bestI]; out.data[o + 1] = data[bestI + 1]; out.data[o + 2] = data[bestI + 2]; out.data[o + 3] = data[bestI + 3]; }
+  }
+  // Partial blocks at the edges come from canvas padding; drop them if they are empty.
+  const colEmpty = x => { for (let y = 0; y < nh; y++) if (out.data[(y * nw + x) * 4 + 3] >= 128) return false; return true; };
+  const rowEmpty = y => { for (let x = 0; x < nw; x++) if (out.data[(y * nw + x) * 4 + 3] >= 128) return false; return true; };
+  let x0 = 0, y0 = 0, x1 = nw, y1 = nh;
+  if (startX < 0 && colEmpty(0)) x0 = 1;
+  if (startY < 0 && rowEmpty(0)) y0 = 1;
+  if ((w - startX) % k && colEmpty(nw - 1)) x1 = nw - 1;
+  if ((h - startY) % k && rowEmpty(nh - 1)) y1 = nh - 1;
+  if (x0 === 0 && y0 === 0 && x1 === nw && y1 === nh) return out;
+  const cropped = new ImageData(x1 - x0, y1 - y0);
+  for (let y = y0; y < y1; y++) cropped.data.set(out.data.subarray((y * nw + x0) * 4, (y * nw + x1) * 4), (y - y0) * (x1 - x0) * 4);
+  return cropped;
+}
+
+// ---------- Main processing ----------
+function settings() {
+  return {
+    scaleMode: $("scaleMode").value, pad: $("padGrid").checked, alphaCut: +$("alphaCut").value,
+    bright: +$("bright").value / 100, contrast: +$("contrast").value / 100, sat: +$("sat").value / 100,
+  };
+}
+
+function processImage(src, s) {
+  const info = {};
+  // 1) count source stats
+  let semi = 0; const srcColors = new Set();
+  for (let i = 0; i < src.data.length; i += 4) {
+    const a = src.data[i + 3];
+    if (a > 0 && a < 255) semi++;
+    if (a >= s.alphaCut) srcColors.add((src.data[i] << 16) | (src.data[i + 1] << 8) | src.data[i + 2]);
+  }
+  info.semi = semi; info.srcColors = srcColors.size; info.srcW = src.width; info.srcH = src.height;
+
+  // 2) scale
+  let det = { k: 1, ox: 0, oy: 0 };
+  if (s.scaleMode === "auto") det = detectScale(src);
+  else { det = detectScale(src); det = { k: +s.scaleMode, ox: det.k === +s.scaleMode ? det.ox : 0, oy: det.k === +s.scaleMode ? det.oy : 0 }; }
+  info.scale = det.k; info.autoScale = s.scaleMode === "auto";
+  let img = downscale(src, det.k, det.ox, det.oy);
+
+  // 3) pad to grid
+  let w = img.width, h = img.height;
+  info.offGrid = (w % TILE !== 0) || (h % TILE !== 0);
+  if (s.pad && info.offGrid) { w = Math.ceil(w / TILE) * TILE; h = Math.ceil(h / TILE) * TILE; }
+  const out = new ImageData(w, h);
+  const changed = new Uint8Array(w * h);
+
+  // 4) alpha + adjust + snap
+  const cache = new Map(); const used = new Set(); let changedN = 0;
+  const adjusting = s.bright !== 0 || s.contrast !== 0 || s.sat !== 0;
+  for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) {
+    const i = (y * img.width + x) * 4, o = (y * w + x) * 4;
+    const d = img.data;
+    if (d[i + 3] < s.alphaCut) { if (d[i + 3] > 0) { changed[y * w + x] = 1; changedN++; } continue; }
+    const key = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+    let pi = cache.get(key);
+    if (pi === undefined) {
+      let [L, A, B] = rgbToOklab(d[i], d[i + 1], d[i + 2]);
+      if (adjusting) {
+        L = (L - 0.5) * (1 + s.contrast) + 0.5 + s.bright * 0.5;
+        A *= (1 + s.sat); B *= (1 + s.sat);
+      }
+      let best = Infinity; pi = 0;
+      for (let p = 0; p < palLab.length; p++) {
+        const q = palLab[p];
+        const dl = L - q[0], da = A - q[1], db = B - q[2];
+        const dist = dl * dl + da * da + db * db;
+        if (dist < best) { best = dist; pi = p; }
+      }
+      cache.set(key, pi);
+    }
+    const c = palRGB[pi];
+    out.data[o] = c[0]; out.data[o + 1] = c[1]; out.data[o + 2] = c[2]; out.data[o + 3] = 255;
+    used.add(pi);
+    if (c[0] !== d[i] || c[1] !== d[i + 1] || c[2] !== d[i + 2] || d[i + 3] !== 255) { changed[y * w + x] = 1; changedN++; }
+  }
+  info.outW = w; info.outH = h; info.usedColors = used.size; info.changed = changedN;
+  info.offPalette = [...cache.keys()].filter(k => { const c = palRGB[cache.get(k)]; return ((c[0] << 16) | (c[1] << 8) | c[2]) !== k; }).length;
+  return { out, changed, info };
+}
+
+// ---------- Rendering ----------
+function drawTo(canvas, img, zoom, changed) {
+  canvas.width = img.width; canvas.height = img.height;
+  const ctx = canvas.getContext("2d");
+  if (changed) {
+    const copy = new ImageData(new Uint8ClampedArray(img.data), img.width, img.height);
+    for (let p = 0; p < changed.length; p++) if (changed[p]) { const o = p * 4; const d = copy.data; d[o] = (d[o] + 255 * 2) / 3; d[o + 1] = d[o + 1] / 3; d[o + 2] = (d[o + 2] + 220 * 2) / 3; d[o + 3] = 255; }
+    ctx.putImageData(copy, 0, 0);
+  } else ctx.putImageData(img, 0, 0);
+  canvas.style.width = img.width * zoom + "px"; canvas.style.height = img.height * zoom + "px";
+}
+
+function chip(text, cls) { return `<span class="chip ${cls || ""}">${text}</span>`; }
+
+function render(item) {
+  const s = settings(), zoom = +$("zoom").value;
+  const r = processImage(item.src, s);
+  item.out = r.out; item.changed = r.changed; item.info = r.info;
+  const i = r.info;
+  const chips = [];
+  chips.push(chip(`${i.srcW}×${i.srcH} → ${i.outW}×${i.outH}`));
+  chips.push(i.scale > 1 ? chip(`${i.autoScale ? "Detected" : "Set"} ${i.scale}× upscale → shrunk to 1×`, "warn") : chip("Pixel size 1:1", "ok"));
+  chips.push(i.semi ? chip(`${i.semi.toLocaleString()} half-transparent px fixed`, "warn") : chip("Alpha clean", "ok"));
+  chips.push(i.offPalette ? chip(`${i.srcColors} colours → ${i.usedColors} palette colours`, "warn") : chip(`Already on palette (${i.usedColors} colours)`, "ok"));
+  if (i.offGrid) chips.push(s.pad ? chip("Padded to 32 px grid", "warn") : chip("Not a multiple of 32 px", "bad"));
+  if (/\.jpe?g$/i.test(item.name)) chips.push(chip("JPG source: expect noise, prefer PNG", "bad"));
+  item.el.querySelector(".chips").innerHTML = chips.join("");
+  drawTo(item.el.querySelector(".before"), item.src, zoom / i.scale);
+  drawTo(item.el.querySelector(".after"), r.out, zoom, $("showDiff").checked ? r.changed : null);
+}
+
+function outName(name) { return name.replace(/\.[^.]+$/, "") + "_normalized.png"; }
+
+function addItem(name, src) {
+  const el = document.createElement("div");
+  el.className = "card";
+  el.innerHTML = `
+    <div class="card-head">
+      <div class="name"></div>
+      <div class="actions"><button class="dl primary">Download PNG</button><button class="rm">Remove</button></div>
+    </div>
+    <div class="chips"></div>
+    <div class="views">
+      <div><p class="view-label">Original</p><div class="view"><canvas class="px before"></canvas></div></div>
+      <div><p class="view-label">Normalized</p><div class="view"><canvas class="px after"></canvas></div></div>
+    </div>`;
+  el.querySelector(".name").textContent = name;
+  const item = { name, src, el };
+  el.querySelector(".dl").onclick = async () => downloadBlob(await imageToPngBlob(item.out), outName(name));
+  el.querySelector(".rm").onclick = () => { items.splice(items.indexOf(item), 1); el.remove(); updateToolbar(); };
+  $("results").prepend(el);
+  items.push(item);
+  render(item);
+  updateToolbar();
+}
+
+function rerenderAll() { items.forEach(render); updateToolbar(); }
+function updateToolbar() {
+  $("dlAll").disabled = $("clearAll").disabled = !items.length;
+  $("summary").textContent = items.length ? `${items.length} image${items.length > 1 ? "s" : ""}` : "";
+}
+
+// ---------- Downloads ----------
+function imageToPngBlob(img) {
+  const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
+  c.getContext("2d").putImageData(img, 0, 0);
+  return new Promise(res => c.toBlob(res, "image/png"));
+}
+// When hosted as a claude.ai artifact, downloads go through the platform; opened as a local file, a plain link works.
+let hostDownloads;
+async function downloadBlob(blob, name) {
+  if (window.claude && typeof window.claude.use === "function") {
+    if (hostDownloads === undefined) { try { hostDownloads = await window.claude.use("downloads"); } catch (_) { hostDownloads = null; } }
+    if (hostDownloads) {
+      try { await hostDownloads.save({ filename: name, data: blob }); }
+      catch (e) { if (e && e.code !== "declined") alertCard(`Download failed (${e.code || e.message}). Try opening the HTML file from the repo instead.`); }
+      return;
+    }
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+// Minimal ZIP writer (stored, no compression; PNGs are already compressed)
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(buf) { let c = 0xFFFFFFFF; for (let i = 0; i < buf.length; i++) c = CRC[(c ^ buf[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+async function makeZip(files) {
+  const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+  const seen = new Map();
+  for (const f of files) {
+    let name = f.name; const n = seen.get(name) || 0; seen.set(name, n + 1);
+    if (n) name = name.replace(/\.png$/, `_${n}.png`);
+    const nameB = enc.encode(name), data = new Uint8Array(await f.blob.arrayBuffer()), crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, nameB.length, true);
+    parts.push(lh.buffer, nameB, data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, nameB.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(ch.buffer, nameB);
+    offset += 30 + nameB.length + data.length;
+  }
+  const cdSize = central.reduce((s, p) => s + (p.byteLength ?? p.length), 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end.buffer], { type: "application/zip" });
+}
+
+// ---------- Wiring ----------
+async function handleFiles(fileList) {
+  for (const f of [...fileList]) {
+    if (!f.type.startsWith("image/")) continue;
+    try { addItem(f.name, await loadImageData(f)); }
+    catch (e) { alertCard(`${f.name}: ${e.message}`); }
+  }
+}
+function alertCard(msg) { const d = document.createElement("div"); d.className = "card"; d.textContent = msg; $("results").prepend(d); }
+
+const drop = $("drop");
+drop.onclick = () => $("files").click();
+$("files").onchange = e => { handleFiles(e.target.files); e.target.value = ""; };
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => handleFiles(e.dataTransfer.files));
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("drop", e => { if (!drop.contains(e.target)) { e.preventDefault(); handleFiles(e.dataTransfer.files); } });
+window.addEventListener("paste", e => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length) handleFiles(fs); });
+
+for (const id of ["alphaCut", "bright", "contrast", "sat"]) {
+  const upd = () => { $(id + "V").textContent = $(id).value; };
+  upd(); $(id).addEventListener("input", upd); $(id).addEventListener("change", rerenderAll);
+}
+for (const id of ["scaleMode", "padGrid", "zoom", "showDiff"]) $(id).addEventListener("change", rerenderAll);
+
+$("dlAll").onclick = async () => {
+  const files = [];
+  for (const it of items) files.push({ name: outName(it.name), blob: await imageToPngBlob(it.out) });
+  downloadBlob(await makeZip(files), "normalized_assets.zip");
+};
+$("clearAll").onclick = () => { items.length = 0; $("results").innerHTML = ""; updateToolbar(); };
+
+$("loadPalBtn").onclick = () => $("palFile").click();
+$("palFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const hex = [...new Set(await parsePaletteFile(f))];
+    if (!hex.length) throw new Error("no colours found");
+    if (hex.length > 512) throw new Error(`${hex.length} colours – that looks like an image, not a palette`);
+    const p = { name: `${f.name} (${hex.length} colours)`, hex };
+    setPalette(p);
+    try { localStorage.setItem("pxnorm-palette", JSON.stringify(p)); } catch (_) {}
+    rerenderAll();
+  } catch (err) { alertCard(`Palette not loaded: ${err.message}`); }
+};
+$("resetPalBtn").onclick = () => {
+  try { localStorage.removeItem("pxnorm-palette"); } catch (_) {}
+  setPalette({ name: "Project palette (built-in, 50 colours)", hex: DEFAULT_PALETTE }); rerenderAll();
+};
+
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem("pxnorm-palette") || "null"); } catch (_) {}
+setPalette(saved && Array.isArray(saved.hex) ? saved : palette);
+</script>
+</body>
+</html>
