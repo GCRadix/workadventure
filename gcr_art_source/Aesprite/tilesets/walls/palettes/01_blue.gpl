@@ -1,0 +1,8 @@
+GIMP Palette
+Channels: RGBA
+#
+  0   0   0   0	transparent
+ 28  49  62 255	shade_1
+ 46  77  97 255	shade_2
+ 63  95 119 255	shade_3
+ 84 121 149 255	shade_4
