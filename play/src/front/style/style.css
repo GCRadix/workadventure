@@ -7,6 +7,23 @@ body {
     overflow: hidden;
 }
 
+/* GCR background color (#3A5C5F = hsl(185 24% 30%)) instead of the design system's default blue.
+ * Unlayered, so it wins over the design system's `@layer theme` defaults. */
+:root,
+[data-theme="default"] {
+    --contrast-100: 185 24% 90%;
+    --contrast-200: 185 24% 80%;
+    --contrast-300: 185 28% 70%;
+    --contrast-400: 185 24% 52%;
+    --contrast-500: 185 24% 46%;
+    --contrast-600: 185 24% 38%;
+    --contrast: 185 24% 30%;
+    --contrast-800: 185 24% 30%;
+    --contrast-900: 185 30% 22%;
+    --contrast-1000: 185 35% 16%;
+    --contrast-1100: 185 40% 12%;
+}
+
 /* Nothing is selectable except real text, so a long press on a control cannot start a
  * selection that spills over the map. Opt back in with the `select-text` utility.
  *

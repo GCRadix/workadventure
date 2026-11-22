@@ -2416,6 +2416,19 @@ export class GameScene extends DirtyScene {
     }
 
     /**
+     * Tiled stores the map background colour as "#RRGGBB" or "#AARRGGBB". Phaser only reads the first form as a hex
+     * string, so the second one is turned into "rgba(...)".
+     */
+    private tiledBackgroundColor(color: string | undefined): string | undefined {
+        const argb = color?.match(/^#([0-9a-f]{2})([0-9a-f]{6})$/i);
+        if (!argb) {
+            return color;
+        }
+        const [r, g, b] = [0, 2, 4].map((i) => parseInt(argb[2].slice(i, i + 2), 16));
+        return `rgba(${r}, ${g}, ${b}, ${parseInt(argb[1], 16) / 255})`;
+    }
+
+    /**
      * Send the emitJoinRoom message to the server, wait for the answer and initialize all objects depending on the server
      * answer.
      */
@@ -2424,8 +2437,11 @@ export class GameScene extends DirtyScene {
             throw new Error("No connection found when joining room");
         }
 
-        if (gameManager.currentStartedRoom.backgroundColor != undefined) {
-            this.cameras.main.setBackgroundColor(gameManager.currentStartedRoom.backgroundColor);
+        // The admin API's colour wins; otherwise use the background colour set on the map in Tiled.
+        const backgroundColor =
+            gameManager.currentStartedRoom.backgroundColor ?? this.tiledBackgroundColor(this.mapFile.backgroundcolor);
+        if (backgroundColor != undefined) {
+            this.cameras.main.setBackgroundColor(backgroundColor);
         }
 
         this.connection.emitJoinRoom(

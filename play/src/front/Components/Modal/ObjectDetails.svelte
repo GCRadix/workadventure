@@ -260,7 +260,7 @@
         word-break: break-all;
         pointer-events: auto;
         color: whitesmoke;
-        background-color: #1b2a41d9;
+        background-color: #3a5c5fd9;
         backdrop-filter: blur(40px);
         bottom: 0;
         right: 0;

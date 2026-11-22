@@ -34,7 +34,7 @@ export const MetaTagsDefaultValue: RequiredMetaTagsData = {
     ],
     appName: "WorkAdventure",
     shortAppName: "WA",
-    themeColor: "#1B2A41",
+    themeColor: "#3A5C5F",
     cardImage: "https://workadventu.re/images/general/logo-og.png",
 };
 
