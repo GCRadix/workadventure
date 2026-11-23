@@ -318,6 +318,9 @@ export const EntityRawPrefab = z.object({
     imagePath: z.string(),
     direction: z.enum(["Left", "Up", "Down", "Right"]),
     color: z.string(),
+    // Optional variant of the same object (e.g. "Large" / "Small"). Prefabs sharing a name are one tile in the
+    // map editor; when some of them carry a variant, the editor shows a variant picker next to the colours.
+    variant: z.string().optional(),
     collisionGrid: CollisionGrid.optional(),
     depthOffset: z.number().optional(),
     // UUID of the user who uploaded this custom entity. Stamped by map-storage from the

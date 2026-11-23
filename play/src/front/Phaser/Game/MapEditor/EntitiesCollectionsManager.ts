@@ -93,6 +93,7 @@ export class EntitiesCollectionsManager {
                                 imagePath: new URL(entity.imagePath, url).toString(),
                                 direction: entity.direction,
                                 color: entity.color,
+                                variant: entity.variant,
                                 collisionGrid: entity.collisionGrid,
                                 type: entity.type,
                                 ownerId: entity.ownerId,

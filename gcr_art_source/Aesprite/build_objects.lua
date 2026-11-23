@@ -4,13 +4,15 @@
 --   Colours:  *.gpl next to the .aseprite. <object>_<colour>.gpl (or <object>.gpl = "default") belongs to that
 --             project; otherwise to the project sharing the longest name prefix up to a _ or -. No .gpl -> the
 --             project's own palette ("default").
---   Frames:   1 frame -> one image facing Down.
---             Tag named Down/Up/Left/Right (or South/North/West/East, Front/Back) -> those frames are that direction.
---             Tag with another name -> its frames are a separate object "<Name> <tag>" (end the tag name with
---             a direction, e.g. "curtain left", to give it one).
---             Untagged frames -> separate objects "<Name> 1", "<Name> 2", ... (the id always holds the frame
---             number, also for a 1-frame project, so adding frames later never changes existing ids)
---   Layers named "collision" or "ignore" are not exported.
+--   Every project is ONE tile in the editor, with a variant picker (tags / frames), colour swatches (palettes)
+--   and positions (direction tags).
+--   Frames:   Tag named Down/Up/Left/Right (or South/North/West/East, Front/Back) -> that direction.
+--             Tag with another name -> a variant (end the tag name with a direction, e.g. "curtain left", to
+--             give it one).
+--             Untagged frame -> a variant named by its frame number (also for a 1-frame project, so adding
+--             frames later never changes existing ids).
+--   Layers named "collision" or "ignore" are not exported. Tiles mostly painted on a "collision" layer block
+--   players (per frame; it overrides objects.cfg collision for that frame).
 -- Settings per object (collision, depth): objects.cfg
 --
 -- Every image is cropped to the object's content (the same box for all its frames), then padded to whole
@@ -119,9 +121,11 @@ local entries, files = {}, 0
 for _, o in ipairs(objects) do
   local spr = app.open(o.path)
   local mode, transparent = spr.colorMode, spr.transparentColor
+  local collisionLayers = {}
   local function hide(layers)
     for _, l in ipairs(layers) do
       local n = l.name:lower()
+      if n == "collision" then table.insert(collisionLayers, l) end
       if n == "collision" or n == "ignore" then l.isVisible = false end
       if l.isGroup then hide(l.layers) end
     end
@@ -137,19 +141,24 @@ for _, o in ipairs(objects) do
   -- frames -> (variant, direction)
   local frameInfo = {}
   for _, tag in ipairs(spr.tags) do
-    local name = tag.name:lower():gsub("^%s+", ""):gsub("%s+$", "")
+    local shown = tag.name:gsub("^%s+", ""):gsub("%s+$", "")   -- as written, for the editor's variant picker
+    local name = shown:lower()
     local variant, dir
     if DIRS[name] then
-      variant, dir = "", DIRS[name]
+      variant, dir, shown = "", DIRS[name], ""
     else
       local base, d = name:match("^(.-)[%s_%-]+(%a+)$")
-      if base and DIRS[d] then variant, dir = base, DIRS[d] else variant, dir = name, "Down" end
+      if base and DIRS[d] then
+        variant, dir, shown = base, DIRS[d], shown:sub(1, #base)
+      else
+        variant, dir = name, "Down"
+      end
     end
     for f = tag.fromFrame.frameNumber, tag.toFrame.frameNumber do
       if frameInfo[f] then
         warn(o.cat .. "/" .. o.obj .. ": frame " .. f .. " is in more than one tag, using '" .. frameInfo[f].tag .. "'")
       elseif f == tag.fromFrame.frameNumber then
-        frameInfo[f] = { variant = variant, dir = dir, tag = tag.name }
+        frameInfo[f] = { variant = variant, shown = shown, dir = dir, tag = tag.name }
       end
     end
   end
@@ -160,14 +169,14 @@ for _, o in ipairs(objects) do
       for _, tag in ipairs(spr.tags) do
         if f >= tag.fromFrame.frameNumber and f <= tag.toFrame.frameNumber then covered = true end
       end
-      -- untagged: the id always carries the frame number (so adding frames later keeps frame 1's id);
-      -- the display name only shows it when there are several frames
-      if not covered then frameInfo[f] = { variant = tostring(f), shown = multi and tostring(f) or "", dir = "Down" } end
+      -- untagged: a variant named by its frame number (also for a 1-frame project, so adding frames later
+      -- keeps frame 1's id)
+      if not covered then frameInfo[f] = { variant = tostring(f), shown = tostring(f), dir = "Down" } end
     end
   end
 
   -- render frames (indexed or rgb), find the common content box
-  local frames, box = {}, nil
+  local frames, box, lastFrame = {}, nil, #spr.frames
   for f = 1, #spr.frames do
     if frameInfo[f] then
       local img = Image(spr.width, spr.height, mode)
@@ -176,6 +185,26 @@ for _, o in ipairs(objects) do
       frames[f] = img
       local b = img:shrinkBounds(mode == ColorMode.INDEXED and transparent or 0)
       if b.width > 0 and b.height > 0 then box = box and box:union(b) or b end
+    end
+  end
+
+  -- painted colliders: every pixel of a "collision" layer, per frame (sprite coordinates)
+  local collisionPixels = {}
+  for f = 1, #spr.frames do
+    if frameInfo[f] then
+      for _, l in ipairs(collisionLayers) do
+        local cel = l:cel(f)
+        if cel then
+          for it in cel.image:pixels() do
+            local v = it()
+            local solid = (mode == ColorMode.INDEXED) and (v ~= transparent) or (mode ~= ColorMode.INDEXED and app.pixelColor.rgbaA(v) > 0)
+            if solid then
+              collisionPixels[f] = collisionPixels[f] or {}
+              table.insert(collisionPixels[f], { cel.position.x + it.x, cel.position.y + it.y })
+            end
+          end
+        end
+      end
     end
   end
   local ownPal = Palette(spr.palettes[1])
@@ -188,11 +217,11 @@ for _, o in ipairs(objects) do
     local W, H = tw * T, th * T
     local ox, oy = (W - box.width) // 2, H - box.height
     local collision = setting(o.cat, o.obj, "collision", "none")
-    local depth = tonumber(setting(o.cat, o.obj, "depth", ""))
+    local cfgDepth = tonumber(setting(o.cat, o.obj, "depth", ""))
     local rows = collision == "all" and th or collision == "base" and 1 or tonumber(collision) or 0
     if collision ~= "none" and rows == 0 then problem(o.cat .. "/" .. o.obj .. ": collision=" .. collision .. " is not none|base|all|<rows>") end
     rows = math.min(rows, th)
-    if depth == nil then depth = -rows * T end   -- sort by the top of the collision area, like the built-in furniture
+    local depth = cfgDepth or -rows * T   -- sort by the top of the collision area, like the built-in furniture
     local name = title(o.obj)
     local used = {}
 
@@ -251,8 +280,9 @@ for _, o in ipairs(objects) do
       end
       do
       local cssColours = {}
-      for f, img in pairs(frames) do
-        local info = frameInfo[f]
+      for f = 1, lastFrame do
+        local img, info = frames[f], frameInfo[f]
+        if img then
         local out = Image(W, H, ColorMode.RGB)
         local counts, bad = {}, false
         for it in img:pixels(box) do
@@ -273,8 +303,10 @@ for _, o in ipairs(objects) do
         end
         if bad then problem(o.cat .. "/" .. o.obj .. ": " .. (p.file and app.fs.fileName(p.file) or "palette") .. " has fewer colours than the project uses") end
 
-        -- swatch colour (unique per object, the editor tells colours apart by it)
-        if not cssColours[p.label] then
+        -- swatch colour: one per palette, the same for every variant of the object (the editor shows variants in
+        -- their own picker). It's the colour that differs between the palettes; unique within the object.
+        local swatchKey = p.label
+        if not cssColours[swatchKey] then
           local best, bestN = 0, -1
           if swatchIndex then
             best = pal:getColor(swatchIndex).rgbaPixel & 0xffffff
@@ -285,12 +317,43 @@ for _, o in ipairs(objects) do
           local css = string.format("#%02x%02x%02x", r, g, b)
           while used[css] do b = (b + 7) % 256; css = string.format("#%02x%02x%02x", r, g, b) end
           used[css] = true
-          cssColours[p.label] = css
+          cssColours[swatchKey] = css
         end
 
-        -- collision grid: bottom <rows> tile rows, only cells that contain pixels
-        local grid
-        if rows > 0 then
+        -- collision grid. A painted "collision" layer wins: exactly the tiles it touches block players.
+        -- Otherwise objects.cfg: the bottom <rows> tile rows, only cells that contain pixels.
+        local grid, frameDepth = nil, depth
+        if collisionPixels[f] then
+          -- count the paint per tile; a tile blocks when it holds at least half as much paint as the most painted
+          -- tile, so paint spilling over a tile border doesn't block a whole extra tile
+          local counts, most = {}, 0
+          for _, px in ipairs(collisionPixels[f]) do
+            local x, y = px[1] - box.x + ox, px[2] - box.y + oy
+            if x >= 0 and y >= 0 and x < W and y < H then
+              local k = (y // T) * tw + (x // T)
+              counts[k] = (counts[k] or 0) + 1
+              most = math.max(most, counts[k])
+            end
+          end
+          local hits, top = {}, nil
+          for k, n in pairs(counts) do
+            if n * 2 >= most then
+              hits[k] = true
+              top = top and math.min(top, k // tw) or k // tw
+            end
+          end
+          if top then
+            grid = {}
+            for ty = 0, th - 1 do
+              local row = {}
+              for tx = 0, tw - 1 do row[#row + 1] = hits[ty * tw + tx] and 1 or 0 end
+              grid[#grid + 1] = row
+            end
+            frameDepth = cfgDepth or -(th - top) * T
+          else
+            warn(o.cat .. "/" .. o.obj .. ": frame " .. f .. " collision layer is outside the drawing, ignored")
+          end
+        elseif rows > 0 then
           grid = {}
           for ty = 0, th - 1 do
             local row = {}
@@ -308,8 +371,8 @@ for _, o in ipairs(objects) do
         end
 
         local variant = info.variant
-        local shown = info.shown or variant
-        local entName = shown == "" and name or (name .. " " .. shown)
+        -- one name per object: the editor groups everything with the same name into one tile
+        local entName = name
         local fileBase = slug(o.obj .. (variant ~= "" and ("_" .. variant) or "") .. "_" .. p.label .. "_" .. info.dir)
         local rel = "entities/" .. slug(o.cat) .. "/" .. slug(o.obj) .. "/" .. fileBase .. ".png"
         local id = PREFIX .. ":" .. slug(o.cat) .. "/" .. slug(o.obj) .. ":" .. (variant ~= "" and slug(variant) or "-") .. ":" .. p.label .. ":" .. info.dir:lower()
@@ -318,9 +381,10 @@ for _, o in ipairs(objects) do
         out:saveAs(target)
         files = files + 1
         table.insert(entries, {
-          id = id, name = entName, cat = o.cat, colour = p.label, css = cssColours[p.label], dir = info.dir,
-          rel = rel, grid = grid, depth = depth, sort = slug(o.cat) .. "/" .. slug(o.obj) .. "/" .. (tonumber(variant) and string.format("%05d", tonumber(variant)) or variant) .. "/" .. p.label .. "/" .. DIR_ORDER[info.dir],
+          id = id, name = entName, cat = o.cat, colour = p.label, css = cssColours[swatchKey], dir = info.dir, variant = info.shown,
+          rel = rel, grid = grid, depth = frameDepth, sort = slug(o.cat) .. "/" .. slug(o.obj) .. "/" .. string.format("%05d", f) .. "/" .. p.label .. "/" .. DIR_ORDER[info.dir],
         })
+        end
       end
       end
       ::nextPalette::
@@ -347,6 +411,8 @@ for _, e in ipairs(entries) do
     '"direction": ' .. jstr(e.dir),
     '"color": ' .. jstr(e.css),
   }
+  -- variant (tag or frame number): the editor's variant picker; colours and directions are chosen per variant
+  if e.variant and e.variant ~= "" then table.insert(parts, '"variant": ' .. jstr(e.variant)) end
   if e.grid then
     local rs = {}
     for _, r in ipairs(e.grid) do rs[#rs + 1] = "[" .. table.concat(r, ", ") .. "]" end
@@ -355,7 +421,8 @@ for _, e in ipairs(entries) do
   if e.depth ~= 0 then table.insert(parts, '"depthOffset": ' .. e.depth) end
   lines[#lines + 1] = "  {" .. table.concat(parts, ", ") .. "}"
 end
-local json = "{\n \"version\": \"1.0\",\n \"collectionName\": " .. jstr(COLLECTION) .. ",\n \"tags\": [" .. jstr(slug(COLLECTION)) ..
+local json = "{\n \"version\": \"1.0\",\n \"collectionName\": " .. jstr(COLLECTION) .. ",\n \"tags\": [" ..
+  -- no collection-wide tag: the editor adds it to every object, which would make one big extra category
   "],\n \"collection\": [\n" .. table.concat(lines, ",\n") .. "\n ]\n}\n"
 
 for _, w in ipairs(warnings) do print("WARNING " .. w) end

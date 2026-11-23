@@ -44,6 +44,10 @@ type TileAnimationData = {
 };
 
 const TILE_ANIMATION_REFRESH_FALLBACK_MS = 100;
+/**
+ * Boolean property of a Tiled tile layer: draw it row by row, sorted by y with characters and entities.
+ */
+const Y_SORT_LAYER_PROPERTY = "ySort";
 
 export type DynamicArea = {
     name: string;
@@ -100,6 +104,13 @@ export class GameMapFrontWrapper {
 
     public readonly phaserMap: Tilemap;
     public readonly phaserLayers: RenderableTilemapLayer[] = [];
+    /**
+     * Per-row render layers of tile layers with the "ySort" property (see createYSortedRows).
+     */
+    private readonly ySortedRows = new Map<
+        RenderableTilemapLayer,
+        { opacity: number; layers: Map<number, TilemapLayer> }
+    >();
     /**
      * Areas that we can do CRUD operations on via scripting API
      */
@@ -176,6 +187,9 @@ export class GameMapFrontWrapper {
                             .setAlpha(layer.opacity)
                             .setVisible(layer.visible),
                     );
+                    if (this.isYSortedLayer(layer)) {
+                        this.createYSortedRows(phaserLayer, layer.opacity);
+                    }
                 }
             }
             if (layer.type === "objectgroup" && layer.name === "floorLayer") {
@@ -233,6 +247,96 @@ export class GameMapFrontWrapper {
         this.areasCollisionLayer.setDepth(-2).setCollisionByProperty({ collides: true }).setVisible(false);
 
         this.phaserLayers.push(this.areasCollisionLayer);
+    }
+
+    private isYSortedLayer(layer: ITiledMapTileLayer): boolean {
+        return (
+            this.getMap().orientation === "orthogonal" &&
+            (layer.properties ?? []).some(
+                (property) => property.name === Y_SORT_LAYER_PROPERTY && property.value === true,
+            )
+        );
+    }
+
+    /**
+     * A tile layer with the "ySort" property is drawn row by row: each row is its own layer whose depth is the
+     * bottom edge of the row, the same rule characters (feet) and entities (bottom edge) follow. A character
+     * standing on a row is drawn behind it, while things whose bottom edge is lower (a picture hanging on the
+     * wall face, a desk in front of it) are drawn over it.
+     *
+     * The source layer stays in phaserLayers for collisions, scripting and putTile, but is not drawn itself:
+     * alpha 0 skips rendering while it stays "visible" for the collision grid.
+     */
+    private createYSortedRows(source: RenderableTilemapLayer, opacity: number): void {
+        const rows = { opacity, layers: new Map<number, TilemapLayer>() };
+        this.ySortedRows.set(source, rows);
+        for (let y = 0; y < source.layer.height; y++) {
+            for (const tile of source.layer.data[y]) {
+                if (tile.index !== -1) {
+                    this.getOrCreateYSortedRow(source, y)?.putTileAt(tile, tile.x, 0);
+                }
+            }
+        }
+        source.setAlpha(0);
+    }
+
+    private getOrCreateYSortedRow(source: RenderableTilemapLayer, y: number): TilemapLayer | undefined {
+        const rows = this.ySortedRows.get(source);
+        if (!rows) {
+            return undefined;
+        }
+        const existing = rows.layers.get(y);
+        if (existing) {
+            return existing;
+        }
+        const tileHeight = this.phaserMap.tileHeight;
+        const row = this.phaserMap.createBlankLayer(
+            `${source.layer.name}__ysort_row_${y}`,
+            this.getTilesetsForLayer(source),
+            source.x,
+            source.y + y * tileHeight,
+            source.layer.width,
+            1,
+        );
+        if (!row) {
+            console.warn(`Could not create y-sorted row ${y} of layer "${source.layer.name}"`);
+            return undefined;
+        }
+        row
+            // + 0.5 so that a character whose feet touch the bottom edge of the row is still drawn behind it.
+            .setDepth(source.y + (y + 1) * tileHeight + 0.5)
+            .setScrollFactor(source.scrollFactorX, source.scrollFactorY)
+            .setAlpha(rows.opacity)
+            .setVisible(source.visible);
+        rows.layers.set(y, row);
+        return row;
+    }
+
+    private syncYSortedRowsVisibility(source: RenderableTilemapLayer): void {
+        for (const row of this.ySortedRows.get(source)?.layers.values() ?? []) {
+            row.setVisible(source.visible);
+        }
+    }
+
+    private isYSortedTile(tileX: number, tileY: number): boolean {
+        for (const source of this.ySortedRows.keys()) {
+            if (source.visible && source.hasTileAt(tileX, tileY)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private syncYSortedRowTile(source: RenderableTilemapLayer, x: number, y: number): void {
+        if (!this.ySortedRows.has(source)) {
+            return;
+        }
+        const tile = source.getTileAt(x, y);
+        if (tile) {
+            this.getOrCreateYSortedRow(source, y)?.putTileAt(tile, x, 0);
+        } else {
+            this.ySortedRows.get(source)?.layers.get(y)?.removeTileAt(x, 0);
+        }
     }
 
     private createRenderableLayer(layer: ITiledMapTileLayer, terrains: Array<Tileset>): RenderableTilemapLayer | null {
@@ -297,6 +401,11 @@ export class GameMapFrontWrapper {
     public setTileAnimationsPaused(paused: boolean): void {
         for (const phaserLayer of this.phaserLayers) {
             phaserLayer.setTimerPaused(paused);
+        }
+        for (const { layers } of this.ySortedRows.values()) {
+            for (const row of layers.values()) {
+                row.setTimerPaused(paused);
+            }
         }
     }
 
@@ -463,6 +572,7 @@ export class GameMapFrontWrapper {
         if (phaserLayer != undefined) {
             phaserLayer.setVisible(visible);
             phaserLayer.setCollisionByProperty({ collides: true }, visible);
+            this.syncYSortedRowsVisibility(phaserLayer);
             this.invalidateCollisionGrid();
         } else {
             const phaserLayers = this.findPhaserLayers(layerName + "/");
@@ -477,6 +587,7 @@ export class GameMapFrontWrapper {
             for (let i = 0; i < phaserLayers.length; i++) {
                 phaserLayers[i].setVisible(visible);
                 phaserLayers[i].setCollisionByProperty({ collides: true }, visible);
+                this.syncYSortedRowsVisibility(phaserLayers[i]);
             }
             this.invalidateCollisionGrid();
         }
@@ -907,6 +1018,7 @@ export class GameMapFrontWrapper {
             if (this.isGpuTilemapLayer(phaserLayer)) {
                 phaserLayer.generateLayerDataTexture();
             }
+            this.syncYSortedRowTile(phaserLayer, x, y);
             this.invalidateCollisionGrid({ modifiedLayer: phaserLayer });
         } else {
             console.error("The layer '" + layer + "' does not exist (or is not a tilelaye).");
@@ -987,6 +1099,11 @@ export class GameMapFrontWrapper {
                 // NOTE: Is it possible for position to be blocked by 2 different things?
                 if (positionsToIgnore.has(`x:${xIndex}y:${yIndex}`)) {
                     continue;
+                }
+                // Tiles of a ySort layer (the top row of a wall) are walkable so characters can step behind them,
+                // but furniture must not stand on them: it would stick out through the wall.
+                if (this.isYSortedTile(xIndex, yIndex)) {
+                    return false;
                 }
                 if (
                     !this.scene

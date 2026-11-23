@@ -22,6 +22,7 @@
     import EntitiesGrid from "./EntitiesGrid.svelte";
     import EntityImage from "./EntityItem/EntityImage.svelte";
     import EntityVariantColorPicker from "./EntityItem/EntityVariantColorPicker.svelte";
+    import EntityVariantOptionPicker from "./EntityItem/EntityVariantOptionPicker.svelte";
     import EntityVariantPositionPicker from "./EntityItem/EntityVariantPositionPicker.svelte";
     import EntityUpload from "./EntityUpload/EntityUpload.svelte";
     import TagListItem from "./TagListItem.svelte";
@@ -50,6 +51,7 @@
     let pickedEntity: EntityPrefab | undefined = $state(undefined);
     let pickedEntityVariant: EntityVariant | undefined = $state(undefined);
     let selectedColor = $state("");
+    let selectedVariant = $state("");
 
     let searchTerm = $state("");
 
@@ -67,6 +69,8 @@
                     (entityPrefabVariant) => pickedEntityVariant?.id === entityPrefabVariant.id,
                 );
                 pickedEntity = pickedEntityVariant?.defaultPrefab;
+                selectedVariant = pickedEntity?.variant ?? "";
+                selectedColor = pickedEntity?.color ?? "";
             }
         });
 
@@ -88,13 +92,26 @@
     function onPickEntityVariant(entityVariant: EntityVariant) {
         pickedEntity = entityVariant.defaultPrefab;
         pickedEntityVariant = entityVariant;
+        selectedVariant = pickedEntity.variant ?? "";
         onColorChange(pickedEntity.color);
     }
 
     function onColorChange(color: string) {
         selectedColor = color;
-        pickedEntity = pickedEntityVariant?.getEntityPrefabsPositions(color)[0];
+        // keep the direction the user had picked, if this color has it
+        const positions = pickedEntityVariant?.getEntityPrefabsPositions(color, selectedVariant) ?? [];
+        pickedEntity = positions.find((prefab) => prefab.direction === pickedEntity?.direction) ?? positions[0];
         mapEditorSelectedEntityPrefabStore.set(pickedEntity ? $state.snapshot(pickedEntity) : undefined);
+    }
+
+    function onVariantChange(variant: string) {
+        if (!pickedEntityVariant) {
+            return;
+        }
+        selectedVariant = variant;
+        // keep the color if this variant has it
+        const colors = pickedEntityVariant.getColors(variant);
+        onColorChange(colors.includes(selectedColor) ? selectedColor : colors[0]);
     }
 
     function onSelectedTag(tag: CategoryTag) {
@@ -335,13 +352,21 @@
                         />
                         <div>
                             <p class="m-0"><b>{pickedEntityVariant.defaultPrefab.name}</b></p>
+                            <EntityVariantOptionPicker
+                                entityVariant={pickedEntityVariant}
+                                {selectedVariant}
+                                {onVariantChange}
+                            />
                             <EntityVariantColorPicker
-                                colors={pickedEntityVariant.colors}
+                                colors={pickedEntityVariant.getColors(selectedVariant)}
                                 {selectedColor}
                                 {onColorChange}
                             />
                             <EntityVariantPositionPicker
-                                entityPrefabsPositions={pickedEntityVariant.getEntityPrefabsPositions(selectedColor)}
+                                entityPrefabsPositions={pickedEntityVariant.getEntityPrefabsPositions(
+                                    selectedColor,
+                                    selectedVariant,
+                                )}
                                 selectedEntity={pickedEntity}
                                 {onPickItem}
                             />
