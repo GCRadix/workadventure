@@ -1042,15 +1042,8 @@ export class GameMapFrontWrapper {
             ignoreCollisionGrid,
         );
 
-        const entityCenterCoordinates = {
-            x: Math.ceil(topLeftPos.x + width / 2),
-            y: Math.ceil(topLeftPos.y + height / 2),
-        };
-
-        return (
-            canEntityBePlaced &&
-            this.scene.getEntityPermissions().canEdit(entityCenterCoordinates, width, height, !collisionGrid)
-        );
+        // Rights are checked on the entity's base: a tree can stand in the zone with its crown sticking out.
+        return canEntityBePlaced && this.scene.getEntityPermissions().canEdit(topLeftPos, width, height);
     }
 
     private canEntityBePlaced(
@@ -1165,10 +1158,13 @@ export class GameMapFrontWrapper {
         if (yIndex >= height || yIndex < 0 || xIndex >= width || xIndex < 0) {
             return false;
         }
-        if (this.collisionGrid[yIndex][xIndex] !== 0) {
-            return false;
-        }
-        return true;
+        // Meeting rooms and personal areas are painted on the grid only to steer pathfinding: their floor is free.
+        const tileType = this.collisionGrid[yIndex][xIndex];
+        return (
+            tileType === PathTileType.Walkable ||
+            tileType === PathTileType.MeetingRoom ||
+            tileType === PathTileType.PersonalDesk
+        );
     }
 
     public isOutOfMapBounds(topLeftX: number, topLeftY: number, width = 0, height = 0): boolean {

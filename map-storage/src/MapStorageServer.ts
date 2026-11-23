@@ -137,11 +137,15 @@ const mapStorageServer: MapStorageServer = {
 
                 const gameMapAreas = wamFile.getGameMapAreas();
                 const entityPermissions = new EntityPermissions(gameMapAreas, connectedUserTags, userCanEdit, userUUID);
-                // Rights on an entity are checked at its top-left corner: it is the only point of the entity
-                // map-storage knows. The WAM does not store entity sizes and the size sent by the client cannot
-                // be trusted (a fake size would move the "center" into the user's zone).
-                const assertCanEditEntityAt = (position: EntityCoordinates, action: string) => {
-                    if (!entityPermissions.canEdit(position)) {
+                // Rights on an entity are checked on its base (bottom tile row), so a tree can stand in a zone with
+                // its crown sticking out. The WAM does not store entity sizes: the size comes from the client.
+                // A fake size can only shift the base by up to MAX_ENTITY_RIGHTS_HEIGHT below the top-left corner.
+                const assertCanEditEntityAt = (
+                    position: EntityCoordinates,
+                    size: { width: number; height: number },
+                    action: string,
+                ) => {
+                    if (!entityPermissions.canEdit(position, size.width, size.height)) {
                         throw new Error(
                             `User ${userUUID} is not allowed to ${action} at (${position.x}, ${position.y}) on map ${mapUrl}`,
                         );
@@ -293,8 +297,8 @@ const mapStorageServer: MapStorageServer = {
                         }
                         const entity = wamFile.getGameMapEntities().getEntity(message.id);
                         if (entity) {
-                            assertCanEditEntityAt(entity, `modify the entity ${message.id}`);
-                            assertCanEditEntityAt(message, `move the entity ${message.id}`);
+                            assertCanEditEntityAt(entity, message, `modify the entity ${message.id}`);
+                            assertCanEditEntityAt(message, message, `move the entity ${message.id}`);
                             await mapsManager.executeCommand(
                                 mapKey,
                                 mapUrl.host,
@@ -315,7 +319,7 @@ const mapStorageServer: MapStorageServer = {
                     }
                     case "createEntityMessage": {
                         const message = editMapMessage.createEntityMessage;
-                        assertCanEditEntityAt(message, "create an entity");
+                        assertCanEditEntityAt(message, message, "create an entity");
                         const command = new CreateEntityMapStorageCommand(
                             wamFile,
                             message.id,
@@ -349,7 +353,7 @@ const mapStorageServer: MapStorageServer = {
                         // An entity that is already gone (concurrent edit) is not checked: the delete is a no-op
                         // that is still dispatched so that every client converges.
                         if (entity) {
-                            assertCanEditEntityAt(entity, `delete the entity ${message.id}`);
+                            assertCanEditEntityAt(entity, message, `delete the entity ${message.id}`);
                         }
                         await mapsManager.executeCommand(
                             mapKey,

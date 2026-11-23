@@ -29,6 +29,7 @@ import { EditorToolName } from "../MapEditorModeManager";
 import { AreaPreview } from "../../../Components/MapEditor/AreaPreview";
 import { mapEditorActivated } from "../../../../Stores/MenuStore";
 import { EntityRelatedEditorTool } from "./EntityRelatedEditorTool";
+import { getEntityPlacementTopLeft } from "./EntityPlacement";
 
 import Key = Phaser.Input.Keyboard.Key;
 import Pointer = Phaser.Input.Pointer;
@@ -366,14 +367,7 @@ export class EntityEditorTool extends EntityRelatedEditorTool {
             this.cleanPreview();
             return;
         }
-        let x = Math.floor(pointer.worldX);
-        let y = Math.floor(pointer.worldY);
-
-        if (this.entityPrefab.collisionGrid || this.shiftKey?.isDown) {
-            const offsets = this.getEntityPrefabAlignWithGridOffset();
-            x = Math.floor(pointer.worldX / 32) * 32 + offsets.x;
-            y = Math.floor(pointer.worldY / 32) * 32 + offsets.y;
-        }
+        const topLeft = this.getEntityPrefabPreviewTopLeft(pointer);
 
         const entityId = uuidv4();
 
@@ -384,8 +378,8 @@ export class EntityEditorTool extends EntityRelatedEditorTool {
         }
 
         const entityData: WAMEntityData = {
-            x: Math.floor(x - this.entityPrefabPreview.displayWidth * 0.5),
-            y: Math.floor(y - this.entityPrefabPreview.displayHeight * 0.5),
+            x: topLeft.x,
+            y: topLeft.y,
             prefabRef: this.entityPrefab,
             // Objects that come with a behaviour (chairs you can sit on) start with the properties of their prefab.
             properties: properties ?? withNewPropertyIds(this.entityPrefab.properties ?? []),
@@ -502,20 +496,32 @@ export class EntityEditorTool extends EntityRelatedEditorTool {
         );
     }
 
+    /** Where the object being placed goes (top-left corner): the mouse holds it by its base, see EntityPlacement. */
+    private getEntityPrefabPreviewTopLeft(pointer: Pointer): { x: number; y: number } {
+        if (!this.entityPrefabPreview || !this.entityPrefab) {
+            return { x: Math.floor(pointer.worldX), y: Math.floor(pointer.worldY) };
+        }
+        return getEntityPlacementTopLeft(
+            pointer.worldX,
+            pointer.worldY,
+            this.entityPrefabPreview.displayWidth,
+            this.entityPrefabPreview.displayHeight,
+            this.entityPrefab.collisionGrid,
+            this.entityPrefab.collisionGrid !== undefined || this.shiftKey?.isDown === true,
+        );
+    }
+
     private updateEntityPrefabPreviewPosition(pointer: Pointer): void {
         if (!this.entityPrefabPreview || !this.entityPrefab) {
             return;
         }
 
-        if (this.entityPrefab.collisionGrid || this.shiftKey?.isDown) {
-            const offset = this.getEntityPrefabAlignWithGridOffset();
-            this.entityPrefabPreview.setPosition(
-                Math.floor(pointer.worldX / 32) * 32 + offset.x,
-                Math.floor(pointer.worldY / 32) * 32 + offset.y,
-            );
-        } else {
-            this.entityPrefabPreview.setPosition(Math.floor(pointer.worldX), Math.floor(pointer.worldY));
-        }
+        // the preview's origin is its centre
+        const topLeft = this.getEntityPrefabPreviewTopLeft(pointer);
+        this.entityPrefabPreview.setPosition(
+            topLeft.x + this.entityPrefabPreview.displayWidth * 0.5,
+            topLeft.y + this.entityPrefabPreview.displayHeight * 0.5,
+        );
 
         this.entityPrefabPreview.setDepth(
             this.entityPrefabPreview.y +

@@ -1462,7 +1462,7 @@ export class RoomConnection implements RoomConnection {
         });
     }
 
-    public emitMapEditorDeleteEntity(commandId: string, id: string): void {
+    public emitMapEditorDeleteEntity(commandId: string, id: string, entityDimensions: EntityDimensions): void {
         this.send({
             message: {
                 $case: "editMapCommandMessage",
@@ -1473,6 +1473,8 @@ export class RoomConnection implements RoomConnection {
                             $case: "deleteEntityMessage",
                             deleteEntityMessage: {
                                 id,
+                                width: entityDimensions.width,
+                                height: entityDimensions.height,
                             },
                         },
                     },

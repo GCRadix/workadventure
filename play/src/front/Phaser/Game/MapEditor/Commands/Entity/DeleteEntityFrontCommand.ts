@@ -9,6 +9,8 @@ import { CreateEntityFrontCommand } from "./CreateEntityFrontCommand";
 
 export class DeleteEntityFrontCommand extends DeleteEntityCommand implements FrontCommandInterface {
     private entityData: WAMEntityData | undefined;
+    // Sent to map-storage, which checks rights on the entity's base. Read before the entity is removed.
+    private entityDimensions = { width: 0, height: 0 };
 
     constructor(
         wamFile: WamFile,
@@ -25,6 +27,10 @@ export class DeleteEntityFrontCommand extends DeleteEntityCommand implements Fro
             throw new Error("Trying to delete a non existing Entity!");
         }
         this.entityData = structuredClone(entityData);
+        const entity = this.entitiesManager.getEntities().get(this.entityId);
+        if (entity) {
+            this.entityDimensions = { width: entity.displayWidth, height: entity.displayHeight };
+        }
         this.entitiesManager.deleteEntity(this.entityId);
         return super.execute();
     }
@@ -48,7 +54,7 @@ export class DeleteEntityFrontCommand extends DeleteEntityCommand implements Fro
     }
 
     public emitEvent(roomConnection: RoomConnection): void {
-        roomConnection.emitMapEditorDeleteEntity(this.commandId, this.entityId);
+        roomConnection.emitMapEditorDeleteEntity(this.commandId, this.entityId, this.entityDimensions);
         analyticsClient.trackAdminEvent("map_editor.entity.removed", { entityType: this.entityData?.prefabRef?.id });
     }
 }

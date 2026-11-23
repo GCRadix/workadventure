@@ -122,9 +122,10 @@ export class Entity extends Image implements ActivatableInterface, OutlineableIn
     }
 
     public get canEdit(): boolean {
-        // Checked at the top-left corner (the entity position), like map-storage does: it is the only point
-        // of the entity the server knows, so any other point would let the UI offer edits the server refuses.
-        return (this.scene as GameScene).getEntityPermissions().canEdit({ x: this.x, y: this.y });
+        // Checked on the entity's base (bottom tile row), like map-storage does with the size the client sends.
+        return (this.scene as GameScene)
+            .getEntityPermissions()
+            .canEdit({ x: this.x, y: this.y }, this.displayWidth, this.displayHeight);
     }
 
     public get canRead(): boolean {

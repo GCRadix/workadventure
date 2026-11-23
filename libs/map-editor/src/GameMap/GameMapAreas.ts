@@ -15,6 +15,35 @@ export type AreaUpdateCallback = (
     newProperties: AreaDataProperties | undefined,
 ) => void;
 
+/** Height of an entity's base: one tile. */
+const ENTITY_BASE_HEIGHT = 32;
+/**
+ * Highest entity size taken into account for rights. The size comes from the client, so it is capped: a fake height
+ * cannot move the base of an entity more than this far below its top-left corner.
+ */
+export const MAX_ENTITY_RIGHTS_HEIGHT = 320;
+
+/**
+ * The base of an entity: its bottom tile row, the part it stands on. Rights are checked on it so that tall
+ * objects (trees) can be placed with their top sticking out of the zone.
+ * Without a size (0 x 0), the base is the top-left corner itself.
+ */
+export function getEntityBase(
+    topLeft: EntityCoordinates,
+    width: number,
+    height: number,
+): { x: number; y: number; width: number; height: number } {
+    const safeWidth = Math.max(0, width);
+    const safeHeight = Math.min(Math.max(0, height), MAX_ENTITY_RIGHTS_HEIGHT);
+    const baseHeight = Math.min(ENTITY_BASE_HEIGHT, safeHeight);
+    return {
+        x: topLeft.x,
+        y: topLeft.y + safeHeight - baseHeight,
+        width: safeWidth,
+        height: baseHeight,
+    };
+}
+
 export class GameMapAreas {
     private wam: WAMFileFormat;
     private enterAreaCallbacks = Array<AreaChangeCallback>();
@@ -92,37 +121,27 @@ export class GameMapAreas {
         return true;
     }
 
+    /**
+     * Whether the user may place / edit an entity, given its top-left corner and size: its base (see getEntityBase)
+     * must overlap (by at least one pixel) an area the user can write to. The rest of the entity may stick out.
+     */
     public isUserHasWriteAccessOnAreaForEntityCoordinates(
-        entityCenterCoordinates: EntityCoordinates,
+        entityTopLeft: EntityCoordinates,
         userConnectedTags: string[],
         userUUID = "",
         width: number,
         height: number,
-        floating: boolean,
     ): boolean {
-        const areas = this.getAreasOnPosition(entityCenterCoordinates);
-        const topLeftCoordinates = {
-            x: entityCenterCoordinates.x - width / 2,
-            y: entityCenterCoordinates.y - height / 2,
-        };
-        const bottomRightCoordinates = {
-            x: entityCenterCoordinates.x + width / 2,
-            y: entityCenterCoordinates.y + height / 2,
-        };
+        const base = getEntityBase(entityTopLeft, width, height);
 
-        let validAreas: AreaData[] = areas;
+        // Without a size, the base is a point. Otherwise, one pixel of the base in the area is enough
+        // (touching its edge is not).
+        const validAreas =
+            base.width === 0 || base.height === 0
+                ? this.getAreasOnPosition(base)
+                : [...this.areas.values()].filter((area) => MathUtils.doRectanglesOverlap(base, area));
 
-        validAreas = areas.filter((area) => {
-            if (
-                MathUtils.isOverlappingWithRectangle(topLeftCoordinates, area) &&
-                MathUtils.isOverlappingWithRectangle(bottomRightCoordinates, area)
-            ) {
-                return true;
-            }
-            return false;
-        });
-
-        if (validAreas?.length === 0) return false;
+        if (validAreas.length === 0) return false;
         return (
             validAreas.some((area) => this.isUserHasWriteAccessOnAreaByUserTags(area, userConnectedTags)) ||
             validAreas.some((area) => this.isAreaOwner(area, userUUID))

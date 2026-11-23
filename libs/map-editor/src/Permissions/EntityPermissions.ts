@@ -9,16 +9,22 @@ export class EntityPermissions {
         private userUUID?: string,
     ) {}
 
-    public canEdit(
-        entityCenterCoordinates: EntityCoordinates,
-        width: number = 0,
-        height: number = 0,
-        floating: boolean = false,
-    ): boolean {
+    /**
+     * @param entityTopLeft the entity position (its top-left corner)
+     * @param width the entity size: its base (bottom tile row) must overlap a zone the user can write to.
+     *              Without a size, the top-left corner must be.
+     */
+    public canEdit(entityTopLeft: EntityCoordinates, width: number = 0, height: number = 0): boolean {
         if (this.userCanEdit) {
             return true;
         }
-        return this.isEntityInsideAreaWithUserWriteAccess(entityCenterCoordinates, width, height, floating);
+        return this.gameMapAreas.isUserHasWriteAccessOnAreaForEntityCoordinates(
+            entityTopLeft,
+            this.userConnectedTags,
+            this.userUUID,
+            width,
+            height,
+        );
     }
 
     public canRead(entityCenterCoordinates: EntityCoordinates): boolean {
@@ -26,22 +32,6 @@ export class EntityPermissions {
             return true;
         }
         return this.isEntityInsideAreaWithUserReadAccess(entityCenterCoordinates);
-    }
-
-    private isEntityInsideAreaWithUserWriteAccess(
-        entityCenterCoordinates: EntityCoordinates,
-        width: number,
-        height: number,
-        floating: boolean,
-    ) {
-        return this.gameMapAreas.isUserHasWriteAccessOnAreaForEntityCoordinates(
-            entityCenterCoordinates,
-            this.userConnectedTags,
-            this.userUUID,
-            width,
-            height,
-            floating,
-        );
     }
 
     private isEntityInsideAreaWithUserReadAccess(entityCenterCoordinates: EntityCoordinates) {

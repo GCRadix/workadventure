@@ -451,6 +451,9 @@ message CreateEntityMessage {
 
 message DeleteEntityMessage {
   string id = 1;
+  // Size of the entity, used by map-storage to check rights on its base (bottom tile row).
+  uint32 width = 2;
+  uint32 height = 3;
 }
 
 message CollisionGridRow {

@@ -43,6 +43,8 @@ function makeWam(): WAMFileFormat {
         entities: {
             inside: { x: 32, y: 32, prefabRef, properties: [] },
             outside: { x: 640, y: 640, prefabRef, properties: [] },
+            // a 160x160 tree standing in the zone, its crown sticking out above it
+            tree: { x: 0, y: -64, prefabRef, properties: [] },
         },
     };
 }
@@ -110,8 +112,8 @@ function modifyEntity(id: string, x: number, y: number, width = 32, height = 32)
     return { $case: "modifyEntityMessage", modifyEntityMessage: { id, x, y, width, height, properties: [] } };
 }
 
-function deleteEntity(id: string): EditMapMessage {
-    return { $case: "deleteEntityMessage", deleteEntityMessage: { id } };
+function deleteEntity(id: string, width = 32, height = 32): EditMapMessage {
+    return { $case: "deleteEntityMessage", deleteEntityMessage: { id, width, height } };
 }
 
 const uploadFile: EditMapMessage = {
@@ -164,6 +166,10 @@ describe("MapStorageServer entity edit permissions", () => {
             await expectRefused(ZONE_EDITOR, deleteEntity("outside"));
         });
 
+        it("lets a zone editor delete a tree standing in their zone", async () => {
+            await expectAccepted(ZONE_EDITOR, deleteEntity("tree", 160, 160));
+        });
+
         it("lets a zone editor delete an entity inside their zone", async () => {
             await expectAccepted(ZONE_EDITOR, deleteEntity("inside"));
             expect(wamFile.getWam().entities.inside).toBeUndefined();
@@ -179,8 +185,20 @@ describe("MapStorageServer entity edit permissions", () => {
             await expectRefused(ZONE_EDITOR, createEntity(640, 640));
         });
 
-        it("refuses an entity outside the zone whose fake size puts its center inside", async () => {
-            await expectRefused(ZONE_EDITOR, createEntity(-200, -200, 600, 600));
+        it("lets a zone editor create an entity with only part of its base in their zone", async () => {
+            await expectAccepted(ZONE_EDITOR, createEntity(-96, 64, 128, 32));
+        });
+
+        it("lets a zone editor create a tree whose crown sticks out of their zone", async () => {
+            await expectAccepted(ZONE_EDITOR, createEntity(0, -64, 160, 160));
+        });
+
+        it("refuses a tree whose base is outside the zone", async () => {
+            await expectRefused(ZONE_EDITOR, createEntity(0, 224, 160, 160));
+        });
+
+        it("refuses an entity far outside the zone whose fake height puts its base inside", async () => {
+            await expectRefused(ZONE_EDITOR, createEntity(0, -1000, 32, 1100));
         });
 
         it("lets a zone editor create an entity inside their zone", async () => {
@@ -196,6 +214,10 @@ describe("MapStorageServer entity edit permissions", () => {
 
         it("refuses a zone editor moving an entity out of their zone", async () => {
             await expectRefused(ZONE_EDITOR, modifyEntity("inside", 640, 640));
+        });
+
+        it("lets a zone editor move a tree standing in their zone", async () => {
+            await expectAccepted(ZONE_EDITOR, modifyEntity("tree", 32, -64, 160, 160));
         });
 
         it("lets a zone editor move an entity inside their zone", async () => {
